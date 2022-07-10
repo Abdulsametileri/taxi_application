@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"github.com/Abdulsametileri/taxi-application/util"
 	"github.com/google/uuid"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -14,37 +16,40 @@ func main() {
 	}
 	defer cleanUp()
 
-	taxiID := "taxi.1"
-	q, err := ch.QueueDeclare(
-		taxiID, // name
-		true,   // durable
-		false,  // delete when unused
-		false,  // exclusive
-		false,  // no-wait
-		nil,    // arguments
-	)
-	if err != nil {
-		log.Panicln("Failed to declare a queue")
+	if err = ch.ExchangeDeclare(
+		"taxi-topic", // name
+		"topic",      // type
+		true,         // durable
+		false,        // auto-deleted
+		false,        // internal
+		false,        // no-wait
+		nil,          // arguments
+	); err != nil {
+		log.Panicln(err)
 	}
 
-	if err = orderTaxi(ch, q.Name); err != nil {
+	err = orderTaxi(ch, "taxi-topic", "taxi")
+	err2 := orderTaxi(ch, "taxi-topic", "taxi.eco.#")
+	if err != nil || err2 != nil {
 		log.Panicln(err)
 	}
 }
 
-func orderTaxi(ch *amqp.Channel, queueName string) error {
-	payload := "example-message"
+func orderTaxi(ch *amqp.Channel, exchangeName, taxiID string) error {
+	payload := fmt.Sprintf("example-message for %s", taxiID)
 	messageID := uuid.NewString()
 
+	jsonBytes, _ := json.Marshal(payload)
+
 	err := ch.Publish(
-		"",        // exchange
-		queueName, // routing key
-		false,     // mandatory
-		false,     // immediate
+		exchangeName, // exchange
+		taxiID,       // routing key
+		false,        // mandatory
+		false,        // immediate
 		amqp.Publishing{
 			DeliveryMode: amqp.Persistent, // Specifies if the message should be persisted to disk or not.
-			ContentType:  "text/plain",
-			Body:         []byte(payload),
+			ContentType:  "application/json",
+			Body:         jsonBytes,
 			MessageId:    messageID, // message identifiers are an important aspect of traceability in messaging and distributed applications.,
 		},
 	)
